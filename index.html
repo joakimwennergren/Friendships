@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Friendships: Superkrafter</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: #f5f7fa;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            padding: 25px;
+        }
+        
+        h1 {
+            color: #4a6fa5;
+            text-align: center;
+            margin-bottom: 5px;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-style: italic;
+        }
+        
+        .game-area {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+        }
+        
+        @media (max-width: 750px) {
+            .game-area {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .friends-panel, .actions-panel, .powers-panel {
+            background-color: #f9fafc;
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid #e1e5eb;
+        }
+        
+        .powers-panel {
+            grid-column: 1 / -1;
+        }
+        
+        .panel-title {
+            color: #4a6fa5;
+            border-bottom: 2px solid #e1e5eb;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        
+        .friend {
+            background-color: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 3px 5px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+        
+        .friend:hover {
+            transform: translateY(-3px);
+        }
+        
+        .friend-name {
+            font-weight: bold;
+            color: #4a6fa5;
+            margin: 0 0 5px 0;
+        }
+        
+        .friendship-meter {
+            height: 10px;
+            background-color: #e1e5eb;
+            border-radius: 5px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        
+        .friendship-fill {
+            height: 100%;
+            background-color: #4a6fa5;
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.5s;
+        }
+        
+        .friendship-level {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .action-btn, .power-btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .action-btn {
+            background-color: #4a6fa5;
+            color: white;
+        }
+        
+        .action-btn:hover {
+            background-color: #3a5a80;
+        }
+        
+        .power-btn {
+            background-color: #8a4fa3;
+            color: white;
+        }
+        
+        .power-btn:hover {
+            background-color: #6a3a80;
+        }
+        
+        .action-btn:disabled, .power-btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        .action-cost, .power-cost {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+            margin-bottom: 15px;
+        }
+        
+        .power-cost {
+            color: #8a4fa3;
+        }
+        
+        .event-log {
+            background-color: #f0f4f8;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 25px;
+            max-height: 250px;
+            overflow-y: auto;
+            border: 1px solid #e1e5eb;
+        }
+        
+        .log-title {
+            color: #4a6fa5;
+            margin-top: 0;
+        }
+        
+        .log-entry {
+            padding: 8px 0;
+            border-bottom: 1px dashed #e1e5eb;
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            margin-bottom: 25px;
+            text-align: center;
+            background-color: #f0f4f8;
+            padding: 15px;
+            border-radius: 10px;
+            gap: 10px;
+        }
+        
+        @media (max-width: 600px) {
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        .stat {
+            padding: 10px;
+        }
+        
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #4a6fa5;
+        }
+        
+        .power-value {
+            color: #8a4fa3;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .game-intro {
+            margin-bottom: 25px;
+            padding: 15px;
+            background-color: #f0f4f8;
+            border-radius: 10px;
+            border-left: 4px solid #4a6fa5;
+        }
+        
+        .powers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .power-cooldown {
+            font-size: 12px;
+            color: #e74c3c;
+            margin-top: 3px;
+        }
+        
+        .special-event {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .special-event h3 {
+            margin-top: 0;
+            color: #e67e22;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Friendships: Superkrafter</h1>
+        <div class="subtitle">Bygg vänskaper med hjälp av speciella förmågor</div>
+        
+        <div class="game-intro">
+            <p>Välkommen till Friendships med SUPERKRAFTER! Förutom vanliga handlingar kan du nu använda speciella krafter för att påverka dina vänskaper. Varje kraft har en cooldown och kostar superenergi. Samla superpoäng genom att bygga vänskaper!</p>
+        </div>
+        
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value" id="time-value">100</div>
+                <div class="stat-label">Tid</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="energy-value">80</div>
+                <div class="stat-label">Energi</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value power-value" id="super-energy-value">50</div>
+                <div class="stat-label">Superenergi</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="day-value">1</div>
+                <div class="stat-label">Dag</div>
+            </div>
+        </div>
+        
+        <div class="game-area">
+            <div class="friends-panel">
+                <h2 class="panel-title">Dina Vänner</h2>
+                <div id="friends-container">
+                    <!-- Vänner kommer att läggas till här med JavaScript -->
+                </div>
+            </div>
+            
+            <div class="actions-panel">
+                <h2 class="panel-title">Möjliga Handlingar</h2>
+                <div id="actions-container">
+                    <!-- Handlingsknappar kommer att läggas till här med JavaScript -->
+                </div>
+            </div>
+            
+            <div class="powers-panel">
+                <h2 class="panel-title">Superkrafter</h2>
+                <div id="powers-container" class="powers-grid">
+                    <!-- Superkrafter kommer att läggas till här med JavaScript -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="event-log">
+            <h3 class="log-title">Händelser</h3>
+            <div id="log-container">
+                <div class="log-entry">Välkommen till Friendships med Superkrafter! Använd dina krafter klokt för att bygga starka vänskaper.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Speldata
+        let gameState = {
+            time: 100,
+            energy: 80,
+            superEnergy: 50,
+            day: 1,
+            friendships: {
+                'Alex': { level: 20, personality: 'aktiv', trait: 'sportig' },
+                'Sara': { level: 15, personality: 'kreativ', trait: 'konstnärlig' },
+                'Marcus': { level: 10, personality: 'blyg', trait: 'introvert' },
+                'Emma': { level: 5, personality: 'social', trait: 'extrovert' },
+                'David': { level: 0, personality: 'intellektuell', trait: 'filosofisk' },
+                'Maya': { level: 0, personality: 'hjälpsam', trait: 'empatisk' }
+            },
+            activeFriend: null,
+            powers: {
+                'empati': { name: 'Empatiblast', cooldown: 0, maxCooldown: 3, cost: 15, effect: 'Ökar vänskap med alla vänner med 5%' },
+                'tid': { name: 'Tidsfrysning', cooldown: 0, maxCooldown: 5, cost: 20, effect: 'Återställer tid till 100 utan att avsluta dagen' },
+                'energi': { name: 'Energiboost', cooldown: 0, maxCooldown: 4, cost: 15, effect: 'Återställer energi till 80' },
+                'fokus': { name: 'Hyperfokus', cooldown: 0, maxCooldown: 3, cost: 10, effect: 'Dubblar effekten av nästa handling med vald vän' },
+                'glädje': { name: 'Glädjespridning', cooldown: 0, maxCooldown: 4, cost: 12, effect: 'Ökar slumpmässig vänskap med 15%' }
+            },
+            specialEvent: null,
+            hyperfocusActive: false
+        };
+
+        // Alla möjliga handlingar i spelet
+        const actions = [
+            { id: 'chat', name: 'Prata med vän', time: 5, energy: 10, effect: 5 },
+            { id: 'activity', name: 'Gör en aktivitet tillsammans', time: 15, energy: 20, effect: 10 },
+            { id: 'gift', name: 'Ge en present', time: 10, energy: 5, effect: 8 },
+            { id: 'help', name: 'Hjälp med ett problem', time: 20, energy: 25, effect: 15 },
+            { id: 'deep-talk', name: 'Ha ett djupt samtal', time: 25, energy: 30, effect: 20 }
+        ];
+
+        // Initiera spelet
+        document.addEventListener('DOMContentLoaded', function() {
+            renderFriends();
+            renderActions();
+            renderPowers();
+            updateStats();
+            
+            // Starta cooldown-uppdatering
+            setInterval(updateCooldowns, 1000);
+            
+            // Slumpmässiga händelser
+            setInterval(checkForSpecialEvent, 30000);
+        });
+
+        // Rendera listan med vänner
+        function renderFriends() {
+            const container = document.getElementById('friends-container');
+            container.innerHTML = '';
+            
+            for (const [name, data] of Object.entries(gameState.friendships)) {
+                const friendElement = document.createElement('div');
+                friendElement.className = 'friend';
+                friendElement.setAttribute('data-name', name);
+                
+                // Markera aktiv vän
+                if (gameState.activeFriend === name) {
+                    friendElement.style.borderLeft = '4px solid #4a6fa5';
+                }
+                
+                const level = data.level;
+                const personality = data.personality;
+                const trait = data.trait;
+                const levelText = getFriendshipLevelText(level);
+                
+                friendElement.innerHTML = `
+                    <h3 class="friend-name">${name}</h3>
+                    <div class="friendship-level">${levelText} (${level}%) - ${personality} (${trait})</div>
+                    <div class="friendship-meter">
+                        <div class="friendship-fill" style="width: ${level}%"></div>
+                    </div>
+                `;
+                
+                container.appendChild(friendElement);
+            }
+            
+            // Lägg till händelselyssnare igen efter att vi skapat nya element
+            document.querySelectorAll('.friend').forEach(friendElement => {
+                friendElement.addEventListener('click', function() {
+                    const friendName = this.getAttribute('data-name');
+                    selectFriend(friendName);
+                });
+            });
+        }
+
+        // Rendera handlingar
+        function renderActions() {
+            const container = document.getElementById('actions-container');
+            container.innerHTML = '';
+            
+            actions.forEach(action => {
+                const button = document.createElement('button');
+                button.className = 'action-btn';
+                button.id = `action-${action.id}`;
+                button.textContent = action.name;
+                button.disabled = gameState.activeFriend === null;
+                
+                // Visa extra effekt om hyperfokus är aktiv
+                let effectText = action.effect;
+                if (gameState.hyperfocusActive && gameState.activeFriend) {
+                    effectText = action.effect * 2;
+                    button.textContent = `${action.name} (HYPERFOKUS: ${effectText}%)`;
+                }
+                
+                // Skapa kostnadsinformation
+                const costInfo = document.createElement('div');
+                costInfo.className = 'action-cost';
+                costInfo.textContent = `Kostar: ${action.time} tid, ${action.energy} energi | Ger: ${effectText}%`;
+                
+                // Lägg till händelselyssnare
+                button.addEventListener('click', function() {
+                    performAction(action);
+                });
+                
+                container.appendChild(button);
+                container.appendChild(costInfo);
+            });
+        }
+
+        // Rendera superkrafter
+        function renderPowers() {
+            const container = document.getElementById('powers-container');
+            container.innerHTML = '';
+            
+            for (const [powerId, power] of Object.entries(gameState.powers)) {
+                const button = document.createElement('button');
+                button.className = 'power-btn';
+                button.id = `power-${powerId}`;
+                button.textContent = power.name;
+                button.disabled = gameState.superEnergy < power.cost || power.cooldown > 0;
+                
+                // Skapa kostnadsinformation
+                const costInfo = document.createElement('div');
+                costInfo.className = 'power-cost';
+                costInfo.innerHTML = `Kostar: ${power.cost} superenergi<br>Effekt: ${power.effect}`;
+                
+                // Lägg till cooldown-visning
+                const cooldownInfo = document.createElement('div');
+                cooldownInfo.className = 'power-cooldown';
+                cooldownInfo.id = `cooldown-${powerId}`;
+                if (power.cooldown > 0) {
+                    cooldownInfo.textContent = `Cooldown: ${power.cooldown} dag(ar)`;
+                }
+                
+                // Lägg till händelselyssnare
+                button.addEventListener('click', function() {
+                    usePower(powerId);
+                });
+                
+                container.appendChild(button);
+                container.appendChild(costInfo);
+                container.appendChild(cooldownInfo);
+            }
+        }
+
+        // Välj en vän att interagera med
+        function selectFriend(friendName) {
+            gameState.activeFriend = friendName;
+            renderFriends();
+            renderActions();
+            addLog(`Du valde att interagera med ${friendName}.`);
+        }
+
+        // Utför en handling
+        function performAction(action) {
+            if (!gameState.activeFriend) return;
+            
+            // Kolla om spelaren har tillräckligt med resurser
+            if (gameState.time < action.time) {
+                addLog(`Du har inte tillräckligt med tid för att ${action.name.toLowerCase()}.`, 'error');
+                return;
+            }
+            
+            if (gameState.energy < action.energy) {
+                addLog(`Du har inte tillräckligt med energi för att ${action.name.toLowerCase()}.`, 'error');
+                return;
+            }
+            
+            // Dra av resurser
+            gameState.time -= action.time;
+            gameState.energy -= action.energy;
+            
+            // Beräkna effekt (dubblad om hyperfokus är aktiv)
+            let effect = action.effect;
+            if (gameState.hyperfocusActive) {
+                effect = action.effect * 2;
+                gameState.hyperfocusActive = false;
+                addLog(`Hyperfokus effekten användes och fördubblade vänskapsökningen!`, 'success');
+            }
+            
+            // Öka vänskapsnivån
+            const friend = gameState.friendships[gameState.activeFriend];
+            const oldLevel = friend.level;
+            friend.level = Math.min(100, friend.level + effect);
+            
+            // Ge superenergi för framgångsrika handlingar
+            const superEnergyGain = Math.floor(effect / 3);
+            gameState.superEnergy = Math.min(100, gameState.superEnergy + superEnergyGain);
+            
+            // Lägg till händelse i loggen
+            addLog(`Du ${action.name.toLowerCase()} med ${gameState.activeFriend}. Vänskapsnivån ökade från ${oldLevel}% till ${friend.level}%. Du fick ${superEnergyGain} superenergi.`);
+            
+            // Kolla om dagsgränsen är nådd
+            if (gameState.time <= 0 || gameState.energy <= 0) {
+                endDay();
+            }
+            
+            // Uppdatera spelet
+            updateStats();
+            renderFriends();
+            renderActions();
+            renderPowers();
+            
+            // Kolla om spelet är vunnet
+            checkWinCondition();
+        }
+
+        // Använd en superkraft
+        function usePower(powerId) {
+            const power = gameState.powers[powerId];
+            
+            // Kolla om kraften är redo
+            if (power.cooldown > 0) {
+                addLog(`${power.name} är inte redo än. Vänta ${power.cooldown} dag(ar).`, 'error');
+                return;
+            }
+            
+            // Kolla om spelaren har tillräckligt med superenergi
+            if (gameState.superEnergy < power.cost) {
+                addLog(`Du har inte tillräckligt med superenergi för att använda ${power.name}.`, 'error');
+                return;
+            }
+            
+            // Dra av superenergi
+            gameState.superEnergy -= power.cost;
+            
+            // Sätt cooldown
+            power.cooldown = power.maxCooldown;
+            
+            // Utför kraftens effekt
+            let powerMessage = '';
+            
+            switch(powerId) {
+                case 'empati':
+                    // Ökar alla vänskaper med 5%
+                    for (const [name, data] of Object.entries(gameState.friendships)) {
+                        data.level = Math.min(100, data.level + 5);
+                    }
+                    powerMessage = "Empatiblast ökade alla dina vänskaper med 5%!";
+                    break;
+                    
+                case 'tid':
+                    // Återställer tid
+                    gameState.time = 100;
+                    powerMessage = "Tiden frös! Du fick tillbaka all din tid utan att dagen avslutades.";
+                    break;
+                    
+                case 'energi':
+                    // Återställer energi
+                    gameState.energy = 80;
+                    powerMessage = "Energiboost laddade upp dig! Du fick tillbaka all energi.";
+                    break;
+                    
+                case 'fokus':
+                    // Aktiverar hyperfokus
+                    gameState.hyperfocusActive = true;
+                    powerMessage = "Hyperfokus aktiverat! Nästa handling med vald vän ger dubbel effekt.";
+                    break;
+                    
+                case 'glädje':
+                    // Ökar en slumpmässig vänskap med 15%
+                    const friends = Object.keys(gameState.friendships);
+                    const randomFriend = friends[Math.floor(Math.random() * friends.length)];
+                    const oldLevel = gameState.friendships[randomFriend].level;
+                    gameState.friendships[randomFriend].level = Math.min(100, oldLevel + 15);
+                    powerMessage = `Glädjespridning träffade ${randomFriend}! Deras vänskap ökade från ${oldLevel}% till ${gameState.friendships[randomFriend].level}%.`;
+                    break;
+            }
+            
+            addLog(`Du använde ${power.name}! ${powerMessage}`, 'success');
+            
+            // Uppdatera spelet
+            updateStats();
+            renderFriends();
+            renderActions();
+            renderPowers();
+        }
+
+        // Uppdatera cooldowns för krafter
+        function updateCooldowns() {
+            let needsUpdate = false;
+            
+            for (const [powerId, power] of Object.entries(gameState.powers)) {
+                const cooldownElement = document.getElementById(`cooldown-${powerId}`);
+                if (cooldownElement) {
+                    if (power.cooldown > 0) {
+                        cooldownElement.textContent = `Cooldown: ${power.cooldown} dag(ar)`;
+                        cooldownElement.style.display = 'block';
+                    } else {
+                        cooldownElement.style.display = 'none';
+                    }
+                }
+            }
+        }
+
+        // Avsluta dagen
+        function endDay() {
+            gameState.day++;
+            gameState.time = 100;
+            gameState.energy = 80;
+            
+            // Minska cooldowns för krafter
+            for (const [powerId, power] of Object.entries(gameState.powers)) {
+                if (power.cooldown > 0) {
+                    power.cooldown--;
+                }
+            }
+            
+            // Vänner kan också förlora lite vänskap om de försummas
+            let neglectedCount = 0;
+            for (const [name, data] of Object.entries(gameState.friendships)) {
+                if (name !== gameState.activeFriend && data.level > 0) {
+                    data.level = Math.max(0, data.level - 3);
+                    neglectedCount++;
+                }
+            }
+            
+            gameState.activeFriend = null;
+            gameState.hyperfocusActive = false;
+            
+            addLog(`Dag ${gameState.day-1} är slut. Ny dag börjar! ${neglectedCount} vänskaper försvagades p.g.a. försummelse. Krafter har en dag kortare cooldown.`);
+            
+            updateStats();
+            renderFriends();
+            renderActions();
+            renderPowers();
+        }
+
+        // Kolla efter speciella händelser
+        function checkForSpecialEvent() {
+            // 20% chans för specialhändelse varje gång funktionen körs
+            if (Math.random() < 0.2 && !gameState.specialEvent) {
+                const events = [
+                    {
+                        title: "Födelsedagsfest!",
+                        description: "En av dina vänner har födelsedag! Alla handlingar ger dubbel effekt idag.",
+                        effect: "doubleEffect"
+                    },
+                    {
+                        title: "Energikris",
+                        description: "Du känner dig trött idag. Alla handlingar kostar dubbel energi.",
+                        effect: "doubleEnergyCost"
+                    },
+                    {
+                        title: "Vänskapsvecka",
+                        description: "Det är vänskapsvecka! Alla vänskapsförluster halveras idag.",
+                        effect: "halfLoss"
+                    },
+                    {
+                        title: "Superenergiflöde",
+                        description: "Du känner ett starkt flöde av superenergi! Få 30 extra superenergi.",
+                        effect: "extraSuperEnergy"
+                    }
+                ];
+                
+                const event = events[Math.floor(Math.random() * events.length)];
+                gameState.specialEvent = event;
+                
+                // Applicera händelsens effekt direkt
+                applySpecialEventEffect(event);
+                
+                // Visa händelsen
+                showSpecialEvent(event);
+                
+                // Ta bort händelsen efter en dag
+                setTimeout(() => {
+                    gameState.specialEvent = null;
+                    addLog(`Speciella händelsen "${event.title}" är nu över.`, 'info');
+                }, 60000); // Varar i 60 sekunder i verklig tid
+            }
+        }
+
+        // Applicera effekt från specialhändelse
+        function applySpecialEventEffect(event) {
+            switch(event.effect) {
+                case 'doubleEffect':
+                    // Dubbla effekten för alla handlingar
+                    actions.forEach(action => action.effect *= 2);
+                    break;
+                case 'doubleEnergyCost':
+                    // Dubbla energikostnaden för alla handlingar
+                    actions.forEach(action => action.energy *= 2);
+                    break;
+                case 'halfLoss':
+                    // Halvera förlusterna vid dagsavslut (hanteras i endDay)
+                    break;
+                case 'extraSuperEnergy':
+                    gameState.superEnergy = Math.min(100, gameState.superEnergy + 30);
+                    break;
+            }
+        }
+
+        // Visa specialhändelse
+        function showSpecialEvent(event) {
+            const container = document.querySelector('.container');
+            
+            // Skapa element för händelsen
+            const eventElement = document.createElement('div');
+            eventElement.className = 'special-event';
+            eventElement.innerHTML = `
+                <h3>${event.title}</h3>
+                <p>${event.description}</p>
+            `;
+            
+            // Infoga efter intro-texten
+            const intro = document.querySelector('.game-intro');
+            intro.parentNode.insertBefore(eventElement, intro.nextSibling);
+            
+            addLog(`SPECIELL HÄNDELSE: ${event.title} - ${event.description}`, 'success');
+            
+            // Ta bort händelse-elementet när händelsen är över
+            setTimeout(() => {
+                if (eventElement.parentNode) {
+                    eventElement.parentNode.removeChild(eventElement);
+                }
+                
+                // Återställ event-effekter
+                resetSpecialEventEffects(event);
+            }, 60000);
+        }
+
+        // Återställ effekter från specialhändelse
+        function resetSpecialEventEffects(event) {
+            switch(event.effect) {
+                case 'doubleEffect':
+                    actions.forEach(action => action.effect /= 2);
+                    break;
+                case 'doubleEnergyCost':
+                    actions.forEach(action => action.energy /= 2);
+                    break;
+            }
+        }
+
+        // Uppdatera statistikdisplayen
+        function updateStats() {
+            document.getElementById('time-value').textContent = gameState.time;
+            document.getElementById('energy-value').textContent = gameState.energy;
+            document.getElementById('super-energy-value').textContent = gameState.superEnergy;
+            document.getElementById('day-value').textContent = gameState.day;
+            
+            // Uppdatera knapparnas tillgänglighet
+            actions.forEach(action => {
+                const button = document.getElementById(`action-${action.id}`);
+                if (button) {
+                    button.disabled = gameState.activeFriend === null || 
+                                     gameState.time < action.time || 
+                                     gameState.energy < action.energy;
+                }
+            });
+            
+            // Uppdatera powers knapparnas tillgänglighet
+            for (const [powerId, power] of Object.entries(gameState.powers)) {
+                const button = document.getElementById(`power-${powerId}`);
+                if (button) {
+                    button.disabled = gameState.superEnergy < power.cost || power.cooldown > 0;
+                }
+            }
+        }
+
+        // Lägg till en händelse i loggen
+        function addLog(message, type = 'info') {
+            const logContainer = document.getElementById('log-container');
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            
+            if (type === 'error') {
+                logEntry.style.color = '#e74c3c';
+            } else if (type === 'success') {
+                logEntry.style.color = '#27ae60';
+            }
+            
+            logEntry.textContent = `Dag ${gameState.day}: ${message}`;
+            
+            // Lägg till överst
+            logContainer.insertBefore(logEntry, logContainer.firstChild);
+            
+            // Behåll max 10 loggposter
+            if (logContainer.children.length > 10) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+
+        // Hämta textbeskrivning för vänskapsnivå
+        function getFriendshipLevelText(level) {
+            if (level >= 90) return 'Bästa vän för livet';
+            if (level >= 80) return 'Bästa vän';
+            if (level >= 60) return 'Nära vän';
+            if (level >= 40) return 'Vän';
+            if (level >= 20) return 'Bekant';
+            if (level > 0) return 'Ny bekantskap';
+            return 'Främling';
+        }
+
+        // Kolla om spelaren har vunnit
+        function checkWinCondition() {
+            let closeFriends = 0;
+            let bestFriends = 0;
+            
+            for (const [name, data] of Object.entries(gameState.friendships)) {
+                if (data.level >= 60) {
+                    closeFriends++;
+                }
+                if (data.level >= 80) {
+                    bestFriends++;
+                }
+            }
+            
+            if (bestFriends >= 2) {
+                addLog('GRATTIS! Du har två bästa vänner. Du har vunnit spelet på högsta nivå!', 'success');
+                endGame(true);
+                return;
+            }
+            
+            if (closeFriends >= 4) {
+                addLog('Grattis! Du har byggt starka vänskaper med fyra personer. Du har vunnit spelet!', 'success');
+                endGame(false);
+                return;
+            }
+        }
+
+        // Avsluta spelet
+        function endGame(bestEnding) {
+            let message = bestEnding 
+                ? 'Fantastiskt! Du har inte bara byggt starka vänskaper, utan du har två BÄSTA vänner som du kan lita på i alla lägen. Vänskap är livets största skatt!'
+                : 'Bra jobbat! Du har byggt meningsfulla vänskaper med flera personer. Kom ihåg att vänskap kräver omtanke och tid, men det är värt det.';
+            
+            // Inaktivera alla knappar
+            actions.forEach(action => {
+                const button = document.getElementById(`action-${action.id}`);
+                if (button) button.disabled = true;
+            });
+            
+            for (const powerId in gameState.powers) {
+                const button = document.getElementById(`power-${powerId}`);
+                if (button) button.disabled = true;
+            }
+            
+            // Visa vinstmeddelande
+            setTimeout(() => {
+                alert(`VINST!\n\n${message}\n\nDu klarade spelet på ${gameState.day} dagar.`);
+            }, 500);
+        }
+    </script>
+</body>
+</html>
