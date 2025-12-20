@@ -730,9 +730,42 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+        
+        /* Server status */
+        .server-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            z-index: 1000;
+        }
+        
+        .server-connected {
+            background-color: rgba(76, 175, 80, 0.9);
+            color: white;
+        }
+        
+        .server-disconnected {
+            background-color: rgba(244, 67, 54, 0.9);
+            color: white;
+        }
+        
+        .server-connecting {
+            background-color: rgba(255, 193, 7, 0.9);
+            color: black;
+        }
     </style>
+    <!-- Socket.io client library -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
 <body>
+    <!-- Server status indicator -->
+    <div id="server-status" class="server-status server-connecting">
+        Ansluter till server...
+    </div>
+    
     <!-- Miljö-bakgrund (ändras dynamiskt) -->
     <div class="environment-bg" id="environment-background"></div>
     
@@ -1145,6 +1178,7 @@
             environmentChangedToday: false,
             
             // Multiplayer
+            socket: null,
             gameId: null,
             playerId: null,
             playerName: 'Spelare',
@@ -1296,11 +1330,300 @@
             }
         };
 
+        // SOCKET.IO KONFIGURATION
+        let socket = null;
+        
+        // Server status
+        function updateServerStatus(status) {
+            const statusDiv = document.getElementById('server-status');
+            statusDiv.className = 'server-status';
+            
+            switch(status) {
+                case 'connected':
+                    statusDiv.textContent = 'Ansluten till server';
+                    statusDiv.classList.add('server-connected');
+                    break;
+                case 'disconnected':
+                    statusDiv.textContent = 'Ej ansluten till server';
+                    statusDiv.classList.add('server-disconnected');
+                    break;
+                case 'connecting':
+                    statusDiv.textContent = 'Ansluter till server...';
+                    statusDiv.classList.add('server-connecting');
+                    break;
+            }
+        }
+
+        // INITIERA SOCKET ANSLUTNING
+        function initSocket() {
+            updateServerStatus('connecting');
+            
+            // Anslut till Socket.io server
+            // I produktionsmiljö, ändra detta till din server-URL
+            const serverUrl = 'http://localhost:3000';
+
+            console.log(serverUrl)
+            
+            socket = io(serverUrl, {
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000
+            });
+            
+            // Event listeners för socket
+            socket.on('connect', () => {
+                console.log('Ansluten till server');
+                updateServerStatus('connected');
+                gameState.socket = socket;
+                gameState.playerId = socket.id;
+                
+                addLog('Ansluten till multiplayer-server', 'success');
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('Frånkopplad från server');
+                updateServerStatus('disconnected');
+                addLog('Frånkopplad från servern. Försöker återansluta...', 'error');
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('Anslutningsfel:', error);
+                updateServerStatus('disconnected');
+                addLog('Kunde inte ansluta till server. Testa offline-läge eller försök igen senare.', 'error');
+            });
+            
+            socket.on('reconnect', () => {
+                console.log('Återansluten till server');
+                updateServerStatus('connected');
+                addLog('Återansluten till servern!', 'success');
+                
+                // Om vi har ett gameId, försök återansluta till spelet
+                if (gameState.gameId) {
+                    socket.emit('rejoin_game', {
+                        gameId: gameState.gameId,
+                        playerId: gameState.playerId
+                    });
+                }
+            });
+            
+            // SPELRELATERADE EVENTS
+            socket.on('game_created', (data) => {
+                console.log('Spel skapat:', data);
+                gameState.gameId = data.gameId;
+                gameState.playerName = data.playerName;
+                gameState.isHost = true;
+                
+                // Uppdatera UI
+                document.getElementById('invite-code-display').textContent = data.gameId;
+                document.getElementById('game-created-section').style.display = 'block';
+                
+                // Uppdatera lobby-spelare
+                updateLobbyPlayers(data.players);
+                
+                document.getElementById('create-game-btn').textContent = 'Spel skapat!';
+                addLog(`Spel skapat! Kod: ${data.gameId}`, 'success');
+            });
+            
+            socket.on('player_joined', (data) => {
+                console.log('Spelare anslöt:', data);
+                
+                // Uppdatera spelarlistan
+                updateLobbyPlayers(data.players);
+                
+                // Om vi är värd, uppdatera start-knappen
+                if (gameState.isHost) {
+                    const startBtn = document.getElementById('start-game-btn');
+                    startBtn.disabled = data.players.length < 2;
+                    startBtn.classList.toggle('disabled', data.players.length < 2);
+                }
+                
+                addLog(`${data.playerName} har anslutit till spelet!`, 'success');
+                addChatMessage('system', `${data.playerName} har anslutit till spelet!`);
+            });
+            
+            socket.on('player_left', (data) => {
+                console.log('Spelare lämnade:', data);
+                
+                // Uppdatera spelarlistan
+                updateLobbyPlayers(data.players);
+                
+                // Om vi är värd, uppdatera start-knappen
+                if (gameState.isHost) {
+                    const startBtn = document.getElementById('start-game-btn');
+                    startBtn.disabled = data.players.length < 2;
+                    startBtn.classList.toggle('disabled', data.players.length < 2);
+                }
+                
+                addLog(`${data.playerName} har lämnat spelet`, 'warning');
+                addChatMessage('system', `${data.playerName} har lämnat spelet`);
+            });
+            
+            socket.on('game_started', (data) => {
+                console.log('Spel startat:', data);
+                
+                gameState.gameId = data.gameId;
+                gameState.players = data.players;
+                gameState.currentTurn = data.currentTurn;
+                
+                // Starta spel
+                startGameScreen();
+                initializeGameState();
+                renderGame();
+                updatePlayersDisplay();
+                
+                addLog('Spelet har startat!', 'success');
+                addChatMessage('system', 'Spelet har startat!');
+                
+                // Lägg till specialmeddelande för första tur
+                if (gameState.currentTurn === gameState.playerId) {
+                    addLog('Det är din tur! Välj en vän och en handling.', 'success');
+                }
+            });
+            
+            socket.on('turn_ended', (data) => {
+                console.log('Tur avslutad:', data);
+                
+                gameState.players = data.players;
+                gameState.currentTurn = data.currentTurn;
+                gameState.day = data.day;
+                
+                // Uppdatera UI
+                updatePlayersDisplay();
+                updatePlayerDisplay();
+                
+                // Om det är vår tur
+                if (gameState.currentTurn === gameState.playerId) {
+                    // Reset vårt spel till ny dag
+                    gameState.time = 100;
+                    gameState.energy = 80;
+                    gameState.activeFriend = null;
+                    gameState.environmentChangedToday = false;
+                    gameState.hyperfocusActive = false;
+                    
+                    // Uppdatera cooldowns
+                    Object.values(gameState.powers).forEach(power => {
+                        if (power.cooldown > 0) power.cooldown--;
+                    });
+                    
+                    // Uppdatera allt
+                    updateStats();
+                    renderFriends();
+                    renderActions();
+                    renderPowers();
+                    renderEnvironments();
+                    
+                    addLog(`Dag ${gameState.day}. Det är din tur!`, 'success');
+                } else {
+                    addLog(`Dag ${gameState.day}. ${data.currentPlayerName}s tur börjar.`, 'info');
+                }
+            });
+            
+            socket.on('player_action', (data) => {
+                console.log('Spelarhandling:', data);
+                
+                // Uppdatera spelarens status
+                const player = gameState.players.find(p => p.id === data.playerId);
+                if (player) {
+                    player.time = data.time;
+                    player.energy = data.energy;
+                    player.superEnergy = data.superEnergy;
+                }
+                
+                // Uppdatera UI
+                updatePlayersDisplay();
+                
+                // Lägg till i logg
+                if (data.playerId !== gameState.playerId) {
+                    const actionName = actions.find(a => a.id === data.actionId)?.name || data.actionId;
+                    const friendName = data.friendName || 'någon';
+                    addLog(`${data.playerName} utförde "${actionName}" med ${friendName}`, 'info');
+                }
+            });
+            
+            socket.on('chat_message', (data) => {
+                console.log('Chattmeddelande:', data);
+                
+                // Lägg till i chatt
+                addChatMessage(data.playerName, data.message);
+            });
+            
+            socket.on('player_helped', (data) => {
+                console.log('Spelare hjälpt:', data);
+                
+                // Uppdatera målspelarens energi
+                const target = gameState.players.find(p => p.id === data.targetId);
+                if (target) {
+                    target.energy = data.newEnergy;
+                }
+                
+                // Uppdatera UI
+                updatePlayersDisplay();
+                
+                addLog(`${data.helperName} hjälpte ${data.targetName}!`, 'success');
+                addChatMessage('system', `${data.helperName} hjälpte ${data.targetName}!`);
+            });
+            
+            socket.on('super_shared', (data) => {
+                console.log('Superenergi delad:', data);
+                
+                // Uppdatera spelares superenergi
+                const target = gameState.players.find(p => p.id === data.targetId);
+                if (target) {
+                    target.superEnergy = data.newSuperEnergy;
+                }
+                
+                // Uppdatera UI
+                updatePlayersDisplay();
+                
+                addLog(`${data.sharerName} delade superenergi med ${data.targetName}!`, 'success');
+                addChatMessage('system', `${data.sharerName} delade superenergi med ${data.targetName}!`);
+            });
+            
+            socket.on('environment_changed', (data) => {
+                console.log('Miljö ändrad:', data);
+                
+                // Uppdatera spelarens miljö
+                const player = gameState.players.find(p => p.id === data.playerId);
+                if (player) {
+                    player.environment = data.newEnvironment;
+                    player.time = data.newTime;
+                }
+                
+                // Om det är vår miljö som ändrades
+                if (data.playerId === gameState.playerId) {
+                    gameState.environment = data.newEnvironment;
+                    gameState.time = data.newTime;
+                    gameState.environmentChangedToday = true;
+                    
+                    updateEnvironmentDisplay();
+                    renderEnvironments();
+                    renderActions();
+                    renderPowers();
+                    updateStats();
+                }
+                
+                // Uppdatera UI
+                updatePlayersDisplay();
+                
+                addLog(`${data.playerName} reste till ${ENVIRONMENTS[data.newEnvironment].name}!`, 'success');
+                addChatMessage('system', `${data.playerName} reste till ${ENVIRONMENTS[data.newEnvironment].name}!`);
+            });
+            
+            socket.on('error', (data) => {
+                console.error('Serverfel:', data);
+                addLog(`Fel: ${data.message}`, 'error');
+            });
+        }
+
         // INITIERING
         document.addEventListener('DOMContentLoaded', function() {
             setupEventListeners();
             renderAvatarSelection();
             renderEnvironmentSelection();
+            
+            // Initiera socket-anslutning
+            initSocket();
         });
 
         // SETUP EVENT LISTENERS
@@ -1407,87 +1730,16 @@
                 bg.style.background = env.background;
                 bg.style.backgroundImage = 'none';
             }
-            
-            // För riktiga bilder skulle vi använda:
-            // bg.style.backgroundImage = `url('${env.backgroundImage}')`;
-        }
-
-        // SKAPA SPEL
-        function createGame() {
-            const btn = document.getElementById('create-game-btn');
-            btn.disabled = true;
-            btn.innerHTML = 'Skapar spel <span class="loading"></span>';
-            
-            // Simulera nätverksfördröjning
-            setTimeout(() => {
-                const gameId = 'FRND' + Math.random().toString(36).substr(2, 6).toUpperCase();
-                gameState.gameId = gameId;
-                gameState.playerId = 'player1';
-                gameState.playerName = AVATARS[gameState.avatar].name;
-                gameState.isHost = true;
-                gameState.players = [{
-                    id: 'player1',
-                    name: gameState.playerName,
-                    avatar: gameState.avatar,
-                    environment: gameState.environment,
-                    isHost: true,
-                    time: 100,
-                    energy: 80,
-                    superEnergy: 50
-                }];
-                
-                // Uppdatera UI
-                document.getElementById('invite-code-display').textContent = gameId;
-                document.getElementById('game-created-section').style.display = 'block';
-                updateLobbyPlayers();
-                
-                btn.disabled = false;
-                btn.textContent = 'Spel skapat!';
-                
-                // Lägg till demo-spelare för testning
-                addDemoPlayers();
-            }, 1500);
-        }
-
-        // LÄGG TILL DEMO-SPELARE
-        function addDemoPlayers() {
-            const demoPlayers = [
-                { name: 'Anna', avatar: 'artist', environment: 'party' },
-                { name: 'Erik', avatar: 'athlete', environment: 'park' },
-                { name: 'Sofia', avatar: 'thinker', environment: 'cafe' }
-            ];
-            
-            demoPlayers.forEach((demo, index) => {
-                if (gameState.players.length < 4) {
-                    const playerId = 'player' + (gameState.players.length + 1);
-                    gameState.players.push({
-                        id: playerId,
-                        name: demo.name,
-                        avatar: demo.avatar,
-                        environment: demo.environment,
-                        isHost: false,
-                        time: 100,
-                        energy: 80,
-                        superEnergy: 50
-                    });
-                }
-            });
-            
-            updateLobbyPlayers();
-            
-            // Aktivera start-knappen
-            if (gameState.players.length >= 2) {
-                document.getElementById('start-game-btn').disabled = false;
-                document.getElementById('start-game-btn').classList.remove('disabled');
-            }
         }
 
         // UPPDATERA LOBBY-SPELARE
-        function updateLobbyPlayers() {
+        function updateLobbyPlayers(players) {
             const container = document.getElementById('lobby-players');
             container.innerHTML = '<h4>Spelare i lobbyn:</h4>';
             
-            gameState.players.forEach(player => {
+            if (!players || players.length === 0) return;
+            
+            players.forEach(player => {
                 const avatar = AVATARS[player.avatar];
                 const playerDiv = document.createElement('div');
                 playerDiv.className = 'player-item';
@@ -1501,10 +1753,50 @@
                 `;
                 container.appendChild(playerDiv);
             });
+            
+            // Uppdatera spelarlistan i gameState
+            if (gameState) {
+                gameState.players = players;
+            }
+        }
+
+        // SKAPA SPEL
+        function createGame() {
+            if (!socket || !socket.connected) {
+                addLog('Inte ansluten till servern. Försök igen.', 'error');
+                updateServerStatus('disconnected');
+                return;
+            }
+            
+            const btn = document.getElementById('create-game-btn');
+            btn.disabled = true;
+            btn.innerHTML = 'Skapar spel <span class="loading"></span>';
+            
+            // Skicka create_game event till servern
+            socket.emit('create_game', {
+                avatar: gameState.avatar,
+                environment: gameState.environment,
+                playerName: AVATARS[gameState.avatar].name
+            });
+            
+            // Timeout-fallback om servern inte svarar
+            setTimeout(() => {
+                if (btn.disabled) {
+                    btn.disabled = false;
+                    btn.textContent = 'Skapa nytt spel med vald avatar & miljö';
+                    addLog('Timeout: Kunde inte skapa spel. Kontrollera serveranslutning.', 'error');
+                }
+            }, 5000);
         }
 
         // GÅ MED I SPEL
         function joinGame() {
+            if (!socket || !socket.connected) {
+                addLog('Inte ansluten till servern. Försök igen.', 'error');
+                updateServerStatus('disconnected');
+                return;
+            }
+            
             const gameCode = document.getElementById('join-code-input').value.trim().toUpperCase();
             if (!gameCode) {
                 document.getElementById('joining-status').textContent = 'Ange en giltig kod';
@@ -1514,43 +1806,49 @@
             document.getElementById('join-game-btn').disabled = true;
             document.getElementById('joining-status').innerHTML = 'Ansluter <span class="loading"></span>';
             
-            // Simulera anslutning
+            // Skicka join_game event till servern
+            socket.emit('join_game', {
+                gameId: gameCode,
+                avatar: gameState.avatar,
+                environment: gameState.environment,
+                playerName: AVATARS[gameState.avatar].name
+            });
+            
+            // Timeout-fallback
             setTimeout(() => {
-                gameState.gameId = gameCode;
-                gameState.playerId = 'player' + (Math.floor(Math.random() * 1000) + 2);
-                gameState.playerName = AVATARS[gameState.avatar].name;
-                gameState.isHost = false;
-                
-                // Simulera att vi går med i ett existerande spel
-                gameState.players = [
-                    { id: 'player1', name: 'Värd', avatar: 'student', environment: 'school', isHost: true },
-                    { id: gameState.playerId, name: gameState.playerName, avatar: gameState.avatar, environment: gameState.environment, isHost: false }
-                ];
-                
-                // Starta spelet direkt i demo
-                startGameScreen();
-                addLog(`Du gick med i spelet ${gameCode} som ${gameState.playerName}`, 'success');
-                addChatMessage('system', `${gameState.playerName} har gått med i spelet!`);
-                
-                // Lägg till fler demo-spelare
-                addDemoPlayers();
-            }, 2000);
+                const joinBtn = document.getElementById('join-game-btn');
+                if (joinBtn.disabled) {
+                    joinBtn.disabled = false;
+                    document.getElementById('joining-status').innerHTML = '';
+                    addLog('Timeout: Kunde inte ansluta till spelet.', 'error');
+                }
+            }, 5000);
         }
 
         // STARTA SPEL (VÄRD)
         function startGame() {
-            if (!gameState.isHost) return;
+            if (!socket || !socket.connected) {
+                addLog('Inte ansluten till servern.', 'error');
+                return;
+            }
             
-            startGameScreen();
-            addLog('Spelet har startat!', 'success');
+            if (!gameState.isHost) {
+                addLog('Endast värd kan starta spelet.', 'error');
+                return;
+            }
             
-            // Sätt första spelarens tur
-            gameState.currentTurn = gameState.players[0].id;
+            if (gameState.players.length < 2) {
+                addLog('Behöver minst 2 spelare för att starta.', 'error');
+                return;
+            }
             
-            // Initiera spel
-            initializeGameState();
-            renderGame();
-            updatePlayersDisplay();
+            // Skicka start_game event till servern
+            socket.emit('start_game', {
+                gameId: gameState.gameId
+            });
+            
+            document.getElementById('start-game-btn').disabled = true;
+            document.getElementById('start-game-btn').innerHTML = 'Startar spel <span class="loading"></span>';
         }
 
         // VISA SPELSKÄRM
@@ -1678,7 +1976,7 @@
             // Avatar display
             document.getElementById('player-avatar-display').innerHTML = 
                 `<div style="font-size: 60px; line-height: 120px;">${avatar.image}</div>`;
-            document.getElementById('player-name-display').textContent = avatar.name;
+            document.getElementById('player-name-display').textContent = gameState.playerName;
             
             // Status
             const isMyTurn = gameState.currentTurn === gameState.playerId;
@@ -1701,8 +1999,6 @@
             const env = ENVIRONMENTS[gameState.environment];
             
             document.getElementById('current-environment-title').textContent = env.name;
-            document.getElementById('current-environment-image').src = ''; // För bilder
-            document.getElementById('current-environment-image').alt = env.name;
             document.getElementById('current-environment-image').parentElement.innerHTML = 
                 `<div style="font-size: 80px; text-align: center; line-height: 180px;">${env.image}</div>`;
             
@@ -1810,7 +2106,7 @@
                     if (gameState.currentTurn === gameState.playerId) {
                         selectFriend(name);
                     } else {
-                        addLog(`Det är inte din tur!`, 'warning');
+                        addLog(`Det är inte din tur! Vänta på ${gameState.currentTurn === gameState.playerId ? 'din' : 'andra spelares'} tur.`, 'warning');
                     }
                 });
                 
@@ -1938,7 +2234,7 @@
                 envCard.className = `environment-card ${envKey === gameState.environment ? 'active' : ''}`;
                 envCard.dataset.environment = envKey;
                 
-                const isUnlocked = true; // I ett riktigt spel skulle detta bero på framsteg
+                const isUnlocked = true;
                 const canTravel = isUnlocked && 
                                  gameState.currentTurn === gameState.playerId && 
                                  !gameState.environmentChangedToday;
@@ -2038,6 +2334,19 @@
             gameState.superEnergy = Math.min(100, gameState.superEnergy + superGain);
             
             addLog(`${action.name} med ${gameState.activeFriend}: ${oldLevel}% → ${friend.level}% (+${finalEffect}%). +${superGain} superenergi`, 'success');
+            
+            // Skicka till servern
+            if (socket && socket.connected) {
+                socket.emit('player_action', {
+                    gameId: gameState.gameId,
+                    playerId: gameState.playerId,
+                    actionId: action.id,
+                    friendName: gameState.activeFriend,
+                    time: gameState.time,
+                    energy: gameState.energy,
+                    superEnergy: gameState.superEnergy
+                });
+            }
             
             // Kolla om dagen är slut
             if (gameState.time <= 0 || gameState.energy <= 0) {
@@ -2149,7 +2458,16 @@
             const avatar = AVATARS[gameState.avatar];
             const bonus = avatar.bonuses.helpEffect ? 2 : 0;
             
-            target.energy = Math.min(100, (target.energy || 80) + 5 + bonus);
+            // Skicka till servern
+            if (socket && socket.connected) {
+                socket.emit('help_player', {
+                    gameId: gameState.gameId,
+                    playerId: gameState.playerId,
+                    targetId: target.id,
+                    energyCost: 15,
+                    energyBonus: 5 + bonus
+                });
+            }
             
             addLog(`Hjälpte ${target.name}! De fick +${5 + bonus} energi.`, 'success');
             addChatMessage('system', `${gameState.playerName} hjälpte ${target.name}!`);
@@ -2182,7 +2500,16 @@
             gameState.superEnergy -= 20;
             gameState.lastSuperShared = gameState.day;
             
-            target.superEnergy = Math.min(100, (target.superEnergy || 50) + 10);
+            // Skicka till servern
+            if (socket && socket.connected) {
+                socket.emit('share_super', {
+                    gameId: gameState.gameId,
+                    playerId: gameState.playerId,
+                    targetId: target.id,
+                    superCost: 20,
+                    superBonus: 10
+                });
+            }
             
             addLog(`Delade superenergi med ${target.name}!`, 'success');
             addChatMessage('system', `${gameState.playerName} delade superenergi med ${target.name}!`);
@@ -2251,8 +2578,17 @@
             gameState.environmentChangedToday = true;
             gameState.time = 0; // Avslutar dagen
             
+            // Skicka till servern
+            if (socket && socket.connected) {
+                socket.emit('change_environment', {
+                    gameId: gameState.gameId,
+                    playerId: gameState.playerId,
+                    newEnvironment: envKey,
+                    newTime: 0
+                });
+            }
+            
             addLog(`Rest till ${ENVIRONMENTS[envKey].name}!`, 'success');
-            addChatMessage('system', `${gameState.playerName} reste till ${ENVIRONMENTS[envKey].name}!`);
             
             updateEnvironmentDisplay();
             renderEnvironments();
@@ -2322,34 +2658,23 @@
                 });
             }
             
-            // Nästa dag
-            gameState.day++;
-            gameState.time = 100;
-            gameState.energy = 80;
-            gameState.activeFriend = null;
-            gameState.hyperfocusActive = false;
-            gameState.environmentChangedToday = false;
+            // Skicka turn_ended till servern
+            if (socket && socket.connected) {
+                socket.emit('turn_ended', {
+                    gameId: gameState.gameId,
+                    playerId: gameState.playerId,
+                    time: gameState.time,
+                    energy: gameState.energy,
+                    superEnergy: gameState.superEnergy
+                });
+            }
             
-            // Nästa spelare
-            const currentIndex = gameState.players.findIndex(p => p.id === gameState.currentTurn);
-            const nextIndex = (currentIndex + 1) % gameState.players.length;
-            gameState.currentTurn = gameState.players[nextIndex].id;
+            addLog(`Dag ${gameState.day} slut. Väntar på andra spelare...`, 'info');
             
-            addLog(`Dag ${gameState.day-1} slut. ${gameState.players[nextIndex].name}s tur börjar.`, 'info');
-            
-            // Uppdatera cooldowns
-            Object.values(gameState.powers).forEach(power => {
-                if (power.cooldown > 0) power.cooldown--;
+            // Disable knappar medan vi väntar
+            document.querySelectorAll('.action-btn, .power-btn, .multiplayer-btn, .environment-btn').forEach(btn => {
+                btn.disabled = true;
             });
-            
-            // Uppdatera allt
-            updateStats();
-            updatePlayersDisplay();
-            updatePlayerDisplay();
-            renderFriends();
-            renderActions();
-            renderPowers();
-            renderEnvironments();
         }
 
         // UPPDATERA COOLDOWNS
@@ -2470,11 +2795,19 @@
             const message = input.value.trim();
             
             if (message) {
+                // Lägg till i lokal chatt
                 addChatMessage(gameState.playerName, message);
-                input.value = '';
                 
-                // I multiplayer skulle detta skickas till servern
-                // socket.send(JSON.stringify({type: 'chat', message: message}));
+                // Skicka till servern
+                if (socket && socket.connected) {
+                    socket.emit('chat_message', {
+                        gameId: gameState.gameId,
+                        playerId: gameState.playerId,
+                        message: message
+                    });
+                }
+                
+                input.value = '';
             }
         }
 
