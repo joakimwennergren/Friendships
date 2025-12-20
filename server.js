@@ -213,7 +213,7 @@ io.on('connection', (socket) => {
         playerName: data.playerName,
         players: game.players,
         isHost: false,
-        message: `Välkommen till ${gameId}! Väntar på att värd startar spelet.`
+        message: `Välkommen till ${data.gameId}! Väntar på att värd startar spelet.`
       });
       
       // Skicka uppdatering till alla i spelet
